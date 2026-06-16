@@ -89,6 +89,21 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
 /* voice status banner */
 #voiceBanner { display: none; text-align: center; font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: .08em; color: var(--accent); margin-bottom: 14px; }
 #voiceBanner.show { display: block; }
+
+/* Apple Health card */
+.ah-card { display: none; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 14px 18px; margin-bottom: 18px; }
+.ah-card.loaded { display: block; }
+.ah-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.ah-title { font-family: ui-monospace, monospace; font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.ah-dot { width: 7px; height: 7px; border-radius: 50%; background: #f87171; animation: ahPulse 2s ease-in-out infinite; }
+.ah-dot.live { background: #6EE7B7; }
+@keyframes ahPulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.ah-updated { font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted); }
+.ah-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 400px) { .ah-stats { grid-template-columns: repeat(2, 1fr); } }
+.ah-stat { text-align: center; }
+.ah-val { font-size: 20px; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; line-height: 1; }
+.ah-label { font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -124,6 +139,19 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
           <label>Hastighet <span id="rateVal">0.90</span></label>
           <input type="range" id="rateSlider" min="0.5" max="1.5" step="0.05" value="0.90">
         </div>
+      </div>
+    </div>
+
+    <div class="ah-card" id="ahCard">
+      <div class="ah-header">
+        <span class="ah-title"><span class="ah-dot" id="ahDot"></span>Apple Health</span>
+        <span class="ah-updated" id="ahUpdated"></span>
+      </div>
+      <div class="ah-stats">
+        <div class="ah-stat"><div class="ah-val" id="ahSteps">—</div><div class="ah-label">Skritt</div></div>
+        <div class="ah-stat"><div class="ah-val" id="ahHR">—</div><div class="ah-label">Puls</div></div>
+        <div class="ah-stat"><div class="ah-val" id="ahSleep">—</div><div class="ah-label">Søvn</div></div>
+        <div class="ah-stat"><div class="ah-val" id="ahWeight">—</div><div class="ah-label">Vekt</div></div>
       </div>
     </div>
 
@@ -303,6 +331,45 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
     micBtn.style.opacity = '.35';
     micBtn.style.cursor = 'not-allowed';
   }
+
+  // ---- Supabase config (same as topbar.js / sync.js) ----
+  const SUPA_URL = (window.DASH_SUPABASE_URL) || 'https://srajryooffirbroltjmg.supabase.co';
+  const SUPA_KEY = (window.DASH_SUPABASE_KEY) || 'sb_publishable_5142ZwTLF_DkSVRzciNuRA_bHwRAu4c';
+
+  // ---- Apple Health fetch + render ----
+  function relAgo(iso) {
+    if (!iso) return '';
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'akkurat nå';
+    if (s < 3600) return Math.floor(s/60) + ' min siden';
+    if (s < 86400) return Math.floor(s/3600) + ' t siden';
+    return Math.floor(s/86400) + ' d siden';
+  }
+  function renderAH(d) {
+    if (!d) return;
+    document.getElementById('ahCard').classList.add('loaded');
+    const dot = document.getElementById('ahDot');
+    const ageS = d.updated_at ? (Date.now() - new Date(d.updated_at).getTime()) / 1000 : Infinity;
+    dot.classList.toggle('live', ageS < 3600);
+    document.getElementById('ahUpdated').textContent = d.updated_at ? relAgo(d.updated_at) : '';
+    document.getElementById('ahSteps').textContent  = d.steps_today  != null ? Number(d.steps_today).toLocaleString('no') : '—';
+    document.getElementById('ahHR').textContent     = d.heart_rate_bpm != null ? d.heart_rate_bpm + ' bpm' : '—';
+    document.getElementById('ahSleep').textContent  = d.sleep_hours  != null ? d.sleep_hours + ' t' : '—';
+    document.getElementById('ahWeight').textContent = d.weight_kg    != null ? d.weight_kg + ' kg' : '—';
+    try { localStorage.setItem('apple_health', JSON.stringify(d)); } catch(e){}
+  }
+  async function fetchAppleHealth() {
+    if (!SUPA_URL || SUPA_URL.indexOf('PASTE') === 0) return;
+    try {
+      const res = await fetch(SUPA_URL + '/rest/v1/app_state?select=data&key=eq.apple_health', {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+      });
+      const json = await res.json();
+      if (json && json[0] && json[0].data) renderAH(json[0].data);
+    } catch(e){}
+  }
+  fetchAppleHealth();
+  setInterval(fetchAppleHealth, 5 * 60 * 1000);
 
   // ---- dashboard context ----
   function dashboardData(){
