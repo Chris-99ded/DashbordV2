@@ -214,15 +214,15 @@ body.topbar-modal-open {
 <nav class="bottombar" id="bottombar" role="navigation" aria-label="Main tabs">
   <a href="index.html" class="bottombar-tab" data-page="main">
     <span class="bottombar-tab-icon">🏠</span>
-    <span>Main</span>
+    <span>Hjem</span>
   </a>
   <a href="health.html" class="bottombar-tab" data-page="health">
     <span class="bottombar-tab-icon">💊</span>
-    <span>Health</span>
+    <span>Helse</span>
   </a>
   <a href="gym.html" class="bottombar-tab" data-page="fitness">
     <span class="bottombar-tab-icon">💪</span>
-    <span>Fitness</span>
+    <span>Trening</span>
   </a>
 </nav>
 `;
