@@ -47,6 +47,16 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
 .hint a { color: var(--accent-2); }
 .hint.saved { color: var(--accent); }
 
+/* voice picker */
+.voice-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.voice-row label { font-size: 11px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.voice-select { flex: 1; background: rgba(255,255,255,.03); border: 1px solid var(--line); color: var(--fg); border-radius: 10px; padding: 9px 11px; font-size: 12px; outline: none; appearance: none; cursor: pointer; }
+.voice-select:focus { border-color: var(--accent); }
+.voice-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.slider-group { display: flex; flex-direction: column; gap: 5px; }
+.slider-group label { font-size: 10px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; color: var(--muted); }
+.slider-group input[type=range] { accent-color: var(--accent); width: 100%; }
+
 /* chat */
 .feed { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .msg { max-width: 90%; }
@@ -100,6 +110,20 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
       <div class="hint" id="hint">
         Nøkkelen lagres kun i <b>denne nettleseren</b> og sendes direkte til Anthropic — aldri til oss.
         Hent nøkkel på <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+      </div>
+      <div class="voice-row">
+        <label>Stemme</label>
+        <select id="voiceSelect" class="voice-select"><option value="">Laster stemmer…</option></select>
+      </div>
+      <div class="voice-sliders">
+        <div class="slider-group">
+          <label>Pitch <span id="pitchVal">0.80</span></label>
+          <input type="range" id="pitchSlider" min="0.1" max="1.5" step="0.05" value="0.80">
+        </div>
+        <div class="slider-group">
+          <label>Hastighet <span id="rateVal">0.90</span></label>
+          <input type="range" id="rateSlider" min="0.5" max="1.5" step="0.05" value="0.90">
+        </div>
       </div>
     </div>
 
@@ -161,22 +185,78 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
     if (!ttsOn && window.speechSynthesis) window.speechSynthesis.cancel();
   });
 
+  // ---- Voice picker ----
+  const VOICE_LS = 'jarvis_voice_name';
+  const PITCH_LS = 'jarvis_pitch';
+  const RATE_LS  = 'jarvis_rate';
+  const voiceSelect = document.getElementById('voiceSelect');
+  const pitchSlider = document.getElementById('pitchSlider');
+  const rateSlider  = document.getElementById('rateSlider');
+  const pitchVal    = document.getElementById('pitchVal');
+  const rateVal     = document.getElementById('rateVal');
+
+  let currentPitch = parseFloat(localStorage.getItem(PITCH_LS) || '0.80');
+  let currentRate  = parseFloat(localStorage.getItem(RATE_LS)  || '0.90');
+  pitchSlider.value = currentPitch; pitchVal.textContent = currentPitch.toFixed(2);
+  rateSlider.value  = currentRate;  rateVal.textContent  = currentRate.toFixed(2);
+
+  pitchSlider.addEventListener('input', () => {
+    currentPitch = parseFloat(pitchSlider.value);
+    pitchVal.textContent = currentPitch.toFixed(2);
+    try { localStorage.setItem(PITCH_LS, currentPitch); } catch(e){}
+  });
+  rateSlider.addEventListener('input', () => {
+    currentRate = parseFloat(rateSlider.value);
+    rateVal.textContent = currentRate.toFixed(2);
+    try { localStorage.setItem(RATE_LS, currentRate); } catch(e){}
+  });
+
+  // Jarvis-voice priority: prefer deep natural/neural English male voices
+  const PRIO = ['guy','david','mark','james','uk english male','us english male','male','en-gb','en-us'];
+  function pickJarvisVoice(voices) {
+    const saved = localStorage.getItem(VOICE_LS);
+    if (saved) { const v = voices.find(v => v.name === saved); if (v) return v; }
+    for (const kw of PRIO) {
+      const v = voices.find(v => v.name.toLowerCase().includes(kw));
+      if (v) return v;
+    }
+    return voices[0] || null;
+  }
+
+  function populateVoices() {
+    if (!window.speechSynthesis) return;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return;
+    const saved = localStorage.getItem(VOICE_LS);
+    const best = pickJarvisVoice(voices);
+    voiceSelect.innerHTML = voices.map(v =>
+      `<option value="${v.name}" ${(saved ? v.name === saved : v === best) ? 'selected' : ''}>${v.name} (${v.lang})</option>`
+    ).join('');
+    if (!saved && best) try { localStorage.setItem(VOICE_LS, best.name); } catch(e){}
+  }
+
+  voiceSelect.addEventListener('change', () => {
+    try { localStorage.setItem(VOICE_LS, voiceSelect.value); } catch(e){}
+  });
+
+  if (window.speechSynthesis) {
+    window.speechSynthesis.addEventListener('voiceschanged', populateVoices);
+    populateVoices();
+  }
+
   // ---- TTS speak ----
   function speak(text){
     if (!ttsOn || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const clean = text.replace(/\*\*/g, '').replace(/^[-•]\s*/gm, '').replace(/<[^>]+>/g, '').trim();
     const utt = new SpeechSynthesisUtterance(clean);
-    utt.lang = 'nb-NO';
-    // prefer Norwegian voice if available
     const voices = window.speechSynthesis.getVoices();
-    const nb = voices.find(v => v.lang.startsWith('nb') || v.lang.startsWith('no'));
-    if (nb) utt.voice = nb;
-    utt.rate = 1.0; utt.pitch = 1.0;
+    const chosen = voices.find(v => v.name === (localStorage.getItem(VOICE_LS) || '')) || pickJarvisVoice(voices);
+    if (chosen) { utt.voice = chosen; utt.lang = chosen.lang; }
+    utt.pitch = currentPitch;
+    utt.rate  = currentRate;
     window.speechSynthesis.speak(utt);
   }
-  // voices load async on some browsers
-  window.speechSynthesis && window.speechSynthesis.addEventListener && window.speechSynthesis.addEventListener('voiceschanged', () => {});
 
   // ---- Speech Recognition (mic) ----
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
