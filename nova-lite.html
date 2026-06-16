@@ -292,7 +292,12 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: 
       });
       const json = await res.json();
       if (json.error){
-        loading.querySelector('div:last-child').innerHTML = render('- ' + (json.error.message || 'Noe gikk galt — sjekk API-nøkkelen.'));
+        const errType = json.error.type || '';
+        let errMsg = 'Noe gikk galt — sjekk API-nøkkelen.';
+        if (errType === 'overloaded_error') errMsg = 'Anthropic sine servere er overbelastet akkurat nå. Vent litt og prøv igjen.';
+        else if (errType === 'authentication_error') errMsg = 'Ugyldig API-nøkkel — sjekk at du limte inn riktig nøkkel.';
+        else if (errType === 'rate_limit_error') errMsg = 'For mange forespørsler — vent litt og prøv igjen.';
+        loading.querySelector('div:last-child').innerHTML = render('- ' + errMsg);
         setOrb(''); busy = false; return;
       }
       const reply = (json.content && json.content[0] && json.content[0].text) || 'Hmm, ingen respons.';
